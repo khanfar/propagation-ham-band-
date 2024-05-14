@@ -1,62 +1,104 @@
+import tkinter as tk
+from tkinter import ttk
 import requests
-import time
+from bs4 import BeautifulSoup
+from datetime import datetime, timezone
 
-def get_location():
-    # Fetch IP address
-    ip_response = requests.get("https://api.ipify.org?format=json")
-    ip_data = ip_response.json()
-    ip_address = ip_data["ip"]
+def fetch_data():
+    url = "https://www.hamqsl.com/solarxml.php"
+    response = requests.get(url)
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.content, "xml")
+        update_time = soup.find("updated").text
+        updated_label.config(text="Last Updated: " + update_time)
 
-    # Fetch location based on IP address
-    location_response = requests.get(f"https://ipinfo.io/{ip_address}/json")
-    location_data = location_response.json()
-    return location_data
+        hf_conditions = soup.find("calculatedconditions")
+        for band_condition in hf_conditions.find_all("band"):
+            band_name = band_condition["name"]
+            time = band_condition["time"]
+            condition = band_condition.text
+            
+            # Check if condition contains the word "Poor", change text color to red
+            if "Poor" in condition:
+                color = "red"
+            else:
+                color = "green"
 
-def get_band_condition(solar_flux, a_index, k_index, x_ray, sunspots):
-    # Determine band condition based on solar data
-    condition = "Unknown"  # Default condition
+            if time == "day":
+                day_conditions[band_name].config(text=band_name + " day = " + condition, fg=color)
+            else:
+                night_conditions[band_name].config(text=band_name + " night = " + condition, fg=color)
     
-    # Define thresholds for solar parameters
-    if solar_flux >= 150 and a_index <= 7 and k_index <= 1 and x_ray == "C" and sunspots >= 50:
-        condition = "Good"
-    elif solar_flux >= 100 and a_index <= 15 and k_index <= 2 and x_ray in ["B", "C"] and sunspots >= 20:
-        condition = "Fair"
-    else:
-        condition = "Poor"
-    
-    return condition
+    # Schedule the fetch_data function to be called again after 10 minutes (600,000 milliseconds)
+    root.after(600000, fetch_data)
 
-def main():
-    while True:
-        # Fetch solar data (replace with your data source)
-        # Example data:
-        solar_flux = 214
-        a_index = 272
-        k_index = 6
-        x_ray = "C5.8"
-        sunspots = 148
-        
-        # Fetch location information
-        location_data = get_location()
-        country = location_data.get("country", "Unknown")
-        city = location_data.get("city", "Unknown")
-        print(f"Location: {city}, {country}")
+def update_time_clocks():
+    # Get current GMT time
+    gmt_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-        # Calculate band conditions
-        band_conditions = {
-            "80m-40m": get_band_condition(solar_flux, a_index, k_index, x_ray[0], sunspots),
-            "30m-20m": get_band_condition(solar_flux, a_index, k_index, x_ray[0], sunspots),
-            "17m-15m": get_band_condition(solar_flux, a_index, k_index, x_ray[0], sunspots),
-            "12m-10m": get_band_condition(solar_flux, a_index, k_index, x_ray[0], sunspots)
-        }
-        
-        # Print band conditions
-        print("Band Conditions:")
-        for band, condition in band_conditions.items():
-            print(f"{band}: {condition}")
-        
-        # Wait for 30 minutes before updating again
-        time.sleep(1800)  # 1800 seconds = 30 minutes
+    # Get current local time
+    local_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-if __name__ == "__main__":
-    main()
+    # Update time labels
+    gmt_label.config(text="GMT Time: " + gmt_time)
+    local_label.config(text="Local Time: " + local_time)
+
+    # Schedule the update_time_clocks function to be called again after 1 second (1000 milliseconds)
+    root.after(1000, update_time_clocks)
+
+# Create the root window
+root = tk.Tk()
+root.title("HF Propagation Conditions")
+root.configure(bg='black')
+
+# Keep the window always on top
+root.attributes('-topmost', True)
+
+# Label for last update time
+updated_label = tk.Label(root, text="", font=("Helvetica", 12, "bold"), fg="green", bg="black")
+updated_label.pack()
+
+# Separator line
+separator = tk.Label(root, text="------------------------------------", font=("Helvetica", 12, "bold"), fg="green", bg="black")
+separator.pack()
+
+# Labels for HF propagation conditions
+hf_conditions_frame = tk.Frame(root, bg="black")
+hf_conditions_frame.pack()
+day_conditions = {}
+night_conditions = {}
+bands = ["80m-40m", "30m-20m", "17m-15m", "12m-10m"]
+for band in bands:
+    day_label = tk.Label(hf_conditions_frame, text=band + " day = ", font=("Helvetica", 10, "bold"), fg="green", bg="black")
+    day_label.grid(sticky="w")
+    day_conditions[band] = day_label
+
+    night_label = tk.Label(hf_conditions_frame, text="  " + band + " night = ", font=("Helvetica", 10, "bold"), fg="green", bg="black")
+    night_label.grid(sticky="w", row=hf_conditions_frame.grid_size()[1] - 1, column=1)
+    night_conditions[band] = night_label
+
+# Separator line
+separator2 = tk.Label(root, text="------------------------------------", font=("Helvetica", 12, "bold"), fg="green", bg="black")
+separator2.pack()
+
+# Labels for GMT and local time
+time_frame = tk.Frame(root, bg="black")
+time_frame.pack()
+
+gmt_label = tk.Label(time_frame, text="", font=("Helvetica", 12, "bold"), fg="green", bg="black")
+gmt_label.pack(side="left")
+
+local_label = tk.Label(time_frame, text="", font=("Helvetica", 12, "bold"), fg="green", bg="black")
+local_label.pack(side="left")
+
+# Label for additional information
+additional_info_label = tk.Label(root, text="Khanfar@2024", font=("Helvetica", 12, "bold"), fg="green", bg="black")
+additional_info_label.pack()
+
+# Fetch data initially when the application starts
+fetch_data()
+
+# Update time labels continuously
+update_time_clocks()
+
+root.mainloop()
